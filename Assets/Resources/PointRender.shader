@@ -45,7 +45,7 @@ Shader "PointRender"
 				float depth : DEPTH;
 			};
 
-		    StructuredBuffer<float4> Target;
+		    sampler2D Render;
 
 			float exposure;
 			float2 Resolution;
@@ -53,18 +53,12 @@ Shader "PointRender"
 			float4x4 ViewProjection;
 			float4x4 ViewProjectionInverse;
 
-			uint getPixelID(float2 uv)
-			{
-				uint2 pix= uint2(floor(0.5 * (uv + 1.0) * Resolution));
-				return pix.x + pix.y * uint(Resolution.x);
-			}
-
 			VOut vert(VIn input)
 			{
 				VOut output;
 				
 				output.position = float4(2.0 * input.position.x, -2.0 * input.position.y, 0.001, 1.0);
-				output.uv = 2.0*input.position.xy;
+				output.uv = input.position.xy + 0.5;
 
 				return output;
 			}
@@ -79,9 +73,8 @@ Shader "PointRender"
 			PSout frag(VOut output)
 			{
 				PSout fo;
-				
-				uint pid = getPixelID(output.uv);
-				float3 col = Target[pid].xyz;
+
+				float3 col = tex2D(Render, output.uv).xyz;
 				fo.color.xyz = tanh(exposure * tonemap(col));
 				//fo.color.xyz = col/256.0;
 				fo.depth = 0.0;

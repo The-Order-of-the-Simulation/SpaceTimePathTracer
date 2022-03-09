@@ -1,6 +1,34 @@
 #define PI 3.14159265
 #define TWO_PI 6.28318530718
 
+#define MAX_INT 0x7FFFFFFF
+#define MAX_UINT 0xFFFFFFFF
+#define MAX_FLOAT (3.402823466e+38f)
+
+float2 CameraResolution;
+float3 CameraPosition;
+float4x4 View;
+float4x4 ProjectionInverse;
+
+struct Ray
+{
+    float2 pixel;
+    float3 origin;
+    float3 direction;
+};
+
+Ray computeCameraRay(uint2 pix)
+{
+    float4 clipPosition = float4(float2(2.0, -2.0) * (float2(pix) / CameraResolution.xy - 0.5), 1.0f, 1.0f);
+    float3 localDirection = mul(ProjectionInverse, clipPosition).xyz;
+	float3 worldDirection = mul(transpose(View), float4(localDirection, 0.0f)).xyz;
+    Ray ray;
+    ray.origin = CameraPosition;
+    ray.direction = normalize(worldDirection);
+    ray.pixel = float2(pix);
+	return ray;
+}
+
 uint4 state; //internal RNG state 
 
 uint4 pcg4d(inout uint4 v) 
@@ -40,144 +68,125 @@ float2 disk()
     return float2(sin(TWO_PI * r.x), cos(TWO_PI * r.x)) * sqrt(r.y);
 }
 
-float3 cpow3(float3 z, float po)
-{
-    float r = length(z);
-    float b = po * acos(z.y / r);
-    float a = po * atan2(z.x, z.z);
-    return pow(r, po) * float3(sin(b) * sin(a), cos(b), sin(b) * cos(a));
-}
-
-float Kernel2(float2 dx)
-{
-    float2 f = max(1.5 - abs(dx), 0.0);
-    float2 k = min(max(0.75 - dx * dx, 0.5), 0.5 * f * f);
-    return k.x * k.y;
-}
-
-//integer log2 of n
-uint uint_log2(uint n)
-{
-#define S(k) if (n >= (1 << k)) { i += k; n >>= k; }
-    int i = -(n == 0); 
-    S(16); S(8); S(4); S(2); S(1); 
-    return i;
-#undef S
-}
-
-#define LEVEL_0 float2(96, 54)
-
-//give the screen space bounding box of the object and get the higrid id
-uint higrid_enc(float2 bmin, float bmax)
-{
-    float2 c = LEVEL_0 * (bmax + bmin) / 2.0;
-    float2 s = LEVEL_0 * (bmax - bmin);
-    float m = max(s.x, s.y); //get largest size of the AABB
-    uint lvl = uint_log2(max(1.0 / m, 1.0)); //get level of the hierarchy
-    //get id of the pixel on this level
-    return lvl;
-}
-
-float3 fmod3(float3 x, float3 y)
-{
-    return x - y * floor(x / y);
-}
-
-//3d morton curve
-uint spreadBy2bits(uint x)
-{
-	x = (x | (x << 16)) & 0x030000FF;
-	x = (x | (x << 8)) & 0x0300F00F;
-	x = (x | (x << 4)) & 0x030C30C3;
-	x = (x | (x << 2)) & 0x09249249;
-}
-
-uint contractBy2bits(uint x)
-{
-	x = x & 0x09249249;
-	x = ((x >> 2) | x) & 0x030C30C3;
-	x = ((x >> 4) | x) & 0x0300F00F;
-	x = ((x >> 8) | x) & 0x030000FF;
-	x = ((x >> 16) | x) & 0x000003FF;
-	return x;
-}
-
-uint morton3D(uint3 x)
-{
-	return spreadBy2bits(x.x) | (spreadBy2bits(x.y) << 1) | (spreadBy2bits(x.z) << 2);
-}
-
-uint3 inverseMorton3D(uint index)
-{
-	return uint3(contractBy2bits(index), contractBy2bits(index >> 1), contractBy2bits(index >> 2));
-}
-
-//2d morton curve
-uint spreadBy1bit(uint x)
-{
-    x &= 0x0000ffff;                  // x = ---- ---- ---- ---- fedc ba98 7654 3210
-    x = (x ^ (x <<  8)) & 0x00ff00ff; // x = ---- ---- fedc ba98 ---- ---- 7654 3210
-    x = (x ^ (x <<  4)) & 0x0f0f0f0f; // x = ---- fedc ---- ba98 ---- 7654 ---- 3210
-    x = (x ^ (x <<  2)) & 0x33333333; // x = --fe --dc --ba --98 --76 --54 --32 --10
-    x = (x ^ (x <<  1)) & 0x55555555; // x = -f-e -d-c -b-a -9-8 -7-6 -5-4 -3-2 -1-0
-    return x;
-}
-
-uint contractBy1bit(uint x)
-{
-    x &= 0x55555555;                  // x = -f-e -d-c -b-a -9-8 -7-6 -5-4 -3-2 -1-0
-    x = (x ^ (x >>  1)) & 0x33333333; // x = --fe --dc --ba --98 --76 --54 --32 --10
-    x = (x ^ (x >>  2)) & 0x0f0f0f0f; // x = ---- fedc ---- ba98 ---- 7654 ---- 3210
-    x = (x ^ (x >>  4)) & 0x00ff00ff; // x = ---- ---- fedc ba98 ---- ---- 7654 3210
-    x = (x ^ (x >>  8)) & 0x0000ffff; // x = ---- ---- ---- ---- fedc ba98 7654 3210
-    return x;
-}
-
-uint morton2D(uint2 x)
-{
-    return spreadBy1bit(x.x) | (spreadBy1bit(x.y) << 1);
-}
-
-uint2 inverseMorton2D(uint index)
-{
-	return uint2(contractBy1bit(index), contractBy1bit(index >> 1));
-}
-
-//rainbow
-
-float3 bump3y(float3 x, float3 yoffset)
-{
-    float3 y = float3(1., 1., 1.) - x * x;
-    y = clamp(y - yoffset, 0, 1);
-    return y;
-}
-
-float3 spectral_zucconi(float w)
-{
-    // w: [400, 700]
-    // x: [0,   1]
-    float x = clamp((w - 400.0) / 300.0, 0, 1);
-
-    const float3 cs = float3(3.54541723, 2.86670055, 2.29421995);
-    const float3 xs = float3(0.69548916, 0.49416934, 0.28269708);
-    const float3 ys = float3(0.02320775, 0.15936245, 0.53520021);
-
-    return bump3y(cs * (x - xs), ys);
-}
-
-#define uintscale 512.0
-uint float2uint(float x)
-{
-    return uint(x * uintscale);
-}
-
-float uint2float(uint x)
-{
-    return float(x) / uintscale;
-}
+//https://iquilezles.org/www/articles/distfunctions/distfunctions.htm
 
 float sdBox(float3 p, float3 b)
 {
-	float3 q = abs(p) - b;
-	return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
+    float3 q = abs(p) - b;
+    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
 }
+
+float sdSphere(float3 pos, float R)
+{
+    return length(pos) - R;
+}
+
+float sdPlane(float3 pos, float3 d)
+{
+    return dot(pos, d);
+}
+
+float sdTorus(float3 pos, float2 t)
+{
+    float2 q = float2(length(pos.xz)-t.x,pos.y);
+    return length(q)-t.y;
+}
+
+float sdVerticalCapsule( float3 pos, float h, float r )
+{
+    pos.y -= clamp( pos.y, 0.0, h );
+    return length( pos ) - r;
+}
+
+float sdCappedCylinder( float3 pos, float h, float r )
+{
+    float2 d = abs(float2(length(pos.xz),pos.y)) - float2(h,r);
+    return min(max(d.x,d.y),0.0) + length(max(d,0.0));
+}
+
+float sdEllipsoid(in float3 p, in float3 r)
+{
+    float k0 = length(p / r);
+    float k1 = length(p / (r * r));
+    return k0 * (k0 - 1.0) / k1;
+}
+
+float4 Conjugate(float4 quat)
+{
+    return quat * float4(-1, -1, -1, 1);
+}
+
+float3 RotateVector(float4 quat, float3 vec)
+{
+    return vec + 2.0 * cross(cross(vec, quat.xyz) + quat.w * vec, quat.xyz);
+}
+
+struct SDFObjectData
+{
+    float3 position;
+    int Type;
+
+    float3 scale;
+    int Material;
+
+    float4 rotation;
+};
+
+int SDFObjectCount;
+StructuredBuffer<SDFObjectData> SDFObjects;
+
+#define SDF_SPHERE 0
+#define SDF_BOX 1
+#define SDF_CAPSULE 2
+#define SDF_TORUS 3
+#define SDF_CYLINDER 4
+
+float ComputeSDF(float3 pos, int id)
+{
+    float3 relativePos = RotateVector(SDFObjects[id].rotation, pos - SDFObjects[id].position);
+
+    float3 Scale = SDFObjects[id].scale;
+
+    float sdf = MAX_FLOAT;
+    switch (SDFObjects[id].Type)
+    {
+    default:
+        return sdf;
+    case SDF_SPHERE:
+        sdf = sdEllipsoid(relativePos, 0.5 * Scale);
+        break;
+    case SDF_BOX:
+        sdf = sdBox(relativePos, 0.5 * Scale);
+        break;
+    case SDF_CAPSULE:
+        sdf = sdVerticalCapsule(relativePos, Scale.y*0.5, Scale.x*0.5);
+        break;
+    case SDF_TORUS:
+        sdf = sdTorus(relativePos, float2(Scale.y, Scale.x*0.5));
+        break;
+    case SDF_CYLINDER:
+        sdf = sdCappedCylinder(relativePos, Scale.x*0.5, Scale.y);
+        break;
+    }
+
+    return sdf;
+}
+
+float SceneSDF(float3 pos, inout int ID)
+{
+    float sdf = MAX_FLOAT;
+    ID = 0;
+
+    for (int i = 0; i < SDFObjectCount; i++)
+    {
+        float newsdf = ComputeSDF(pos, i);
+        if (newsdf < sdf)
+        {
+            sdf = newsdf;
+            ID = i;
+        }
+    }
+
+    return sdf;
+}
+

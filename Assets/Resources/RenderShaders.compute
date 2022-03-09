@@ -1,219 +1,55 @@
 #pragma enable_d3d11_debug_symbols
-#pragma kernel GenKeyValue GEN_KEY_VALUE
-#pragma kernel WriteHashGrid WRITE_HASH_GRID
-#pragma kernel ClearHashGrid CLEAR_HASH_GRID
+
 #pragma kernel Render RENDER
-#pragma kernel AtomicRasterizer ATOMIC_RASTERIZER
 
-#define GROUPTHREADS 1024
-#define THREADBLOCK 8
-
-const int max_iterations = 256;
+#define RENDER_THREADBLOCK 16
+#define RAY_MARCHING_MAX_STEPS 256
+#define RAY_MARCHING_CONE_ANGLE 0.005
+#define RAY_MARCHING_HIT_THRESHOLD 0.001
+#define RAY_MARCHING_MAX_DISTANCE 100.0
 
 int iFrame;
-int Length;
 float Accumulation;
-
-float Param1;
-
-float2 Resolution;
-float3 CameraPosition;
-float4x4 ViewProjection;
-float4x4 ViewProjectionInverse;
 
 #include<Utils.cginc>
 
-float3 ProjectPoint(float3 p)
-{
-    float4 P = mul(ViewProjection, float4(p, 1.0));
-    float3 c = P / P.w;
-
-    return float3(c.xy * float2(0.5, -0.5) * Resolution + 0.5 * Resolution, c.z);
-}
-
-uint getHashPixelID(uint2 pix)
-{
-    return pix.x + uint(Resolution.x) * pix.y;
-}
-
-uint getPixelID(uint2 pix)
-{
-    return morton2D(pix);
-}
-
-uint getPixelID(float2 pix)
-{
-    return getPixelID(uint2(pix));
-}
-
-uint2 getPixel(uint morton)
-{
-    return inverseMorton2D(morton);
-}
-
-uint morton2hash(uint morton)
-{
-    return getHashPixelID(getPixel(morton));
-}
-
-#ifdef GEN_KEY_VALUE
-
-StructuredBuffer<float4> Points;
-RWStructuredBuffer<uint2> KeyValue;
-
-[numthreads(GROUPTHREADS, 1, 1)]
-void GenKeyValue(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
-{
-    uint gid = Gid.x;
-    uint lid = GTid.x;
-    uint id = DTid.x;
-
-    //project point onto screen and get the index of the pixel
-    float4 p = Points[id];
-    float3 proj = ProjectPoint(p.xyz);
-    uint pixel = getPixelID(proj) + 1;
-    if (any(proj < 0.0) || any(proj > Resolution) || distance(p.xy,0.0) < 0.0001 || proj.z < 0.0) pixel = 0;
-    KeyValue[id] = uint2(pixel, id);
-}
-
-#endif //GEN_KEY_VALUE
-
-#ifdef WRITE_HASH_GRID
-
-StructuredBuffer<uint2> KeyValue;
-StructuredBuffer<float4> Points;
-
-RWStructuredBuffer<uint2> HashGrid;
-RWStructuredBuffer<float4> SortedPoints;
-
-[numthreads(GROUPTHREADS, 1, 1)]
-void WriteHashGrid(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
-{
-    uint gid = Gid.x;
-    uint lid = GTid.x;
-    uint id = DTid.x;
-
-    uint2 kv = KeyValue[id]; uint2 kv0 = 0;
-    if (uint(kv.x) == 0) return;   //if key is 0 then the point is outside of the grid
-    if (id > 0) kv0 = KeyValue[id - 1];
-    kv.x--; kv0.x--;
-    if (kv0.x != kv.x) //edge of the range of points
-    {
-        HashGrid[morton2hash(kv.x)].x = id; //beginning of the range
-        if (id > 0) HashGrid[morton2hash(kv0.x)].y = id; //end of the range
-    }
-    
-    float4 P = Points[kv.y];
-    float3 sp = ProjectPoint(P.xyz);
-    SortedPoints[id] = float4(sp, P.w);
-}
-
-#endif //WRITE_HASH_GRID
-
-#ifdef CLEAR_HASH_GRID
-
-RWStructuredBuffer<uint2> HashGrid;
-
-[numthreads(GROUPTHREADS, 1, 1)]
-void ClearHashGrid(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
-{
-    HashGrid[DTid.x] = 0; //end of the range
-}
-
-#endif //CLEAR_HASH_GRID
-
 #ifdef RENDER
 
-StructuredBuffer<uint2> HashGrid;
-StructuredBuffer<float4> SortedPoints;
-RWStructuredBuffer<float4> Target;
-RWStructuredBuffer<uint4> AtomicGrid;
+#define RAY_MARCHING_MAX_STEPS 256
 
-void rasterize(inout float3 col, int2 dp, int2 p0)
-{
-    uint2 pix = (p0 + dp);
-    uint pid = getHashPixelID(pix);
-    uint2 range = HashGrid[pid];
+Texture2D<float4> Previus;
+RWTexture2D<float4> Target;
 
-    for (int j = range.x; j < clamp(range.y, range.x, range.x + 16); j++) 
-    {
-        float4 p = SortedPoints[j];
-        col += spectral_zucconi(p.w) * p.z ;
-    }
-}
-
-#define RAD 3
-
-[numthreads(THREADBLOCK, THREADBLOCK, 1)]
+[numthreads(RENDER_THREADBLOCK, RENDER_THREADBLOCK, 1)]
 void Render(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
 {
     uint2 pix = DTid.xy;
 
-    uint pid = getHashPixelID(pix);
+    Ray ray = computeCameraRay(pix);
 
-    float4 prev = 0;
-    if (iFrame > 0) prev = Target[pid] * Accumulation;
+    float depth = 0.0;
+    int hit_object = -1;
 
-    float3 col = 0;
-
-   /* for (int i = -RAD; i <= RAD; i++)
+    for (int i = 0; i < RAY_MARCHING_MAX_STEPS; i++)
     {
-        for (int j = -RAD; j <= RAD; j++)
+        int ID = 0;
+        float sdf = SceneSDF(ray.origin + ray.direction * depth, ID);
+        depth += sdf;
+        if(sdf < max(RAY_MARCHING_CONE_ANGLE * depth, RAY_MARCHING_HIT_THRESHOLD))
         {
-            rasterize(col, int2(i, j), pix);
+            hit_object = ID;
+            break;
         }
-    }*/
+        if (depth > RAY_MARCHING_MAX_DISTANCE)
+        {
+            break;
+        }
+    }
 
-    col = float3(uint2float(AtomicGrid[pid].x), uint2float(AtomicGrid[pid].x), uint2float(AtomicGrid[pid].x));
+    float3 pos = ray.origin + ray.direction * depth;
+    float3 col = abs(pos)/10.0;
 
-    AtomicGrid[pid] = 0;
-
-    col = col + prev * prev.w;
-
-    Target[pid] = float4(col / (prev.w + 1.0), prev.w + 1.0);
+    Target[pix] = float4(col, 1.0);
 }
 
 #endif //RENDER
-
-#ifdef ATOMIC_RASTERIZER
-
-RWStructuredBuffer<uint4> AtomicGrid;
-StructuredBuffer<float4> Points;
-
-void RasterizePoint(float2 p, float2 dp, float3 col, float r)
-{
-    //float w = distance(p, uint2(p + dp));
-    //col = clamp(col, 0., 200.0) / (15.0*w*w + 1.0);
-    uint id = getHashPixelID(uint2(p + dp));
-    InterlockedAdd(AtomicGrid[id].x, float2uint(col.x));
-    InterlockedAdd(AtomicGrid[id].y, float2uint(col.y));
-    InterlockedAdd(AtomicGrid[id].z, float2uint(col.z));
-}
-
-#define RAD 0
-
-[numthreads(GROUPTHREADS, 1, 1)]
-void AtomicRasterizer(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
-{
-    uint id = DTid.x;
-    float4 p = Points[id];
-    float3 proj = ProjectPoint(p.xyz);
-    float d = distance(p.xyz, CameraPosition);
-    state = uint4(id, iFrame, 0, 0);
-    proj.xy += 0.*Resolution.y*disk() * (proj.z - 0.5);
-    if (any(proj < 0.0) || any(proj > Resolution) || d < 0.15) return;
-   
-    float3 col = 1.0 / (d*d);// spectral_zucconi(p.w);
-    float r = 0.0;// clamp(sqrt(length(col)) / 30.0, 0.0, 5.0);
-    int radius = r;
-
-    for (int i = -radius; i <= radius; i++)
-    {
-        for (int j = -radius; j <= radius; j++)
-        {
-            RasterizePoint(proj.xy, float2(i, j), col, r);
-        }
-    }
-}
-
-#endif //ATOMIC_RASTERIZER

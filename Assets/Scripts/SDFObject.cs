@@ -3,10 +3,19 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class Manipulator : MonoBehaviour
+public class SDFObject : MonoBehaviour
 {
-    // Start is called before the first frame update
-    public float Force = 1.0f;
+    public enum SDFType
+    {
+        Sphere,
+        Box,
+        Capsule,
+        Torus,
+        Cylinder,
+    }
+
+    public SDFType type;
+
     void Start()
     {
 
