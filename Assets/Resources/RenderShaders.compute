@@ -19,6 +19,8 @@ float Accumulation;
 
 #ifdef RENDER
 
+TextureCube<float3> Background;
+SamplerState samplerBackground;
 
 Texture2D<float4> Previous;
 SamplerState samplerPrevious;
@@ -28,6 +30,11 @@ RWTexture2D<float4> Target;
 float4 SamplePrevious(float2 uv)
 {
     return Previous.SampleLevel(samplerPrevious, uv, 0);
+}
+
+float3 SampleBackground(float3 dir)
+{
+    return Background.SampleLevel(samplerBackground, dir, 0);
 }
 
 int TraceRay(inout Ray r)
@@ -76,7 +83,7 @@ float4 PathTrace(inout Ray r)
         }
         else //has hit sky
         {
-            col += att*BACKGROUND;
+            col += att*SampleBackground(r.direction);
             break;
         }
     }

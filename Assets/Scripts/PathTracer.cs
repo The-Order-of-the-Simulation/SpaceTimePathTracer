@@ -43,6 +43,8 @@ public class PathTracer : MonoBehaviour
 
     public List<SDFObject> objects;
 
+    public Cubemap background;
+
     private ComputeBuffer SDFObjects;
 
     private ComputeShader RenderShaders;
@@ -128,7 +130,7 @@ public class PathTracer : MonoBehaviour
         {
             cb = new CommandBuffer
             {
-                name = "PointCloudRender"
+                name = "PathTracer"
             };
             cam.AddCommandBuffer(cameraEvent, cb);
             CommandBuffers[cam] = cb;
@@ -169,8 +171,11 @@ public class PathTracer : MonoBehaviour
         cb.SetComputeMatrixParam(RenderShaders, "ProjectionInverse",ProjectionInverse);
 
         cb.SetComputeBufferParam(RenderShaders, RenderID, "SDFObjects", SDFObjects);
+        
+        cb.SetComputeTextureParam(RenderShaders, RenderID, "Background", background);
         cb.SetComputeTextureParam(RenderShaders, RenderID, "Previous", Buffers[cam].GetBack());
         cb.SetComputeTextureParam(RenderShaders, RenderID, "Target", Buffers[cam].GetFront());
+
         cb.DispatchCompute(RenderShaders, RenderID, IntDivideCeil(cam.pixelWidth, RENDER_THREADBLOCK), IntDivideCeil(cam.pixelHeight, RENDER_THREADBLOCK), 1);
         
         cb.SetGlobalVector("Resolution", new Vector2(cam.pixelWidth, cam.pixelHeight));
@@ -178,6 +183,8 @@ public class PathTracer : MonoBehaviour
         cb.SetGlobalFloat("exposure", exposure);
         cb.SetGlobalInt("iFrame", iFrame);
         cb.DrawMesh(quad, Matrix4x4.identity, material, 0);
+
+        Buffers[cam].SwapBuffers();
     }
 
     // Update is called once per frame
@@ -199,11 +206,6 @@ public class PathTracer : MonoBehaviour
         SDFObjects.SetData(objs);
 
         iFrame++;
-
-        foreach (var cam in Cameras)
-        {
-            Buffers[cam].SwapBuffers();
-        }
     }
 
     private void OnDisable()

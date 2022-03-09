@@ -387,9 +387,10 @@ MonoBehaviour:
   - {fileID: 1109400971}
   - {fileID: 992656458}
   - {fileID: 98703001}
+  background: {fileID: 8900000, guid: b21f21a76bc09a4469f444f4c08b7cbe, type: 3}
   material: {fileID: 2100000, guid: a14efc8de63c09244adbfe509a738742, type: 2}
   exposure: 1.5
-  acc: 0.15
+  acc: 0.9
   isEnabled: 0
 --- !u!4 &1734260518
 Transform:
