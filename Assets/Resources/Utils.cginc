@@ -5,6 +5,8 @@
 #define MAX_UINT 0xFFFFFFFF
 #define MAX_FLOAT (3.402823466e+38f)
 
+#define NUMERICAL_DERIVATIVE_EPS 0.01
+
 float2 CameraResolution;
 float3 CameraPosition;
 float4x4 View;
@@ -12,8 +14,8 @@ float4x4 ProjectionInverse;
 
 struct Ray
 {
-    float2 pixel;
     float3 origin;
+    float distance;
     float3 direction;
 };
 
@@ -25,7 +27,7 @@ Ray computeCameraRay(uint2 pix)
     Ray ray;
     ray.origin = CameraPosition;
     ray.direction = normalize(worldDirection);
-    ray.pixel = float2(pix);
+    ray.distance = 0;
 	return ray;
 }
 
@@ -38,6 +40,11 @@ uint4 pcg4d(inout uint4 v)
     v = v ^ (v >> 16u);
     v.x += v.y * v.w; v.y += v.z * v.x; v.z += v.x * v.y; v.w += v.y * v.z;
     return v;
+}
+
+void InitializeRand(uint frame, uint2 pix)
+{
+    state = uint4(frame, pix, 0);
 }
 
 float rand() {return float(pcg4d(state).x) / float(0xffffffffu);}
@@ -66,6 +73,17 @@ float2 disk()
 {
     float2 r = rand2();
     return float2(sin(TWO_PI * r.x), cos(TWO_PI * r.x)) * sqrt(r.y);
+}
+
+float3 udir()
+{
+    float2 rng = rand2();
+    float phi = 2.*PI*rng.x;
+    float cos_theta = 2.*rng.y-1.0;
+    float sin_theta = sqrt(1.0-cos_theta*cos_theta);
+    float cos_phi = cos(phi);
+    float sin_phi = sin(phi);
+    return float3(cos_phi*sin_theta, sin_phi*sin_theta, cos_theta);
 }
 
 //https://iquilezles.org/www/articles/distfunctions/distfunctions.htm
@@ -188,5 +206,15 @@ float SceneSDF(float3 pos, inout int ID)
     }
 
     return sdf;
+}
+
+float3 Normal(float3 p, int i) 
+{
+    const float h = NUMERICAL_DERIVATIVE_EPS; 
+    const float2 k = float2(1,-1);
+    return normalize( k.xyy*ComputeSDF( p + k.xyy*h, i) + 
+                      k.yyx*ComputeSDF( p + k.yyx*h, i) + 
+                      k.yxy*ComputeSDF( p + k.yxy*h, i) + 
+                      k.xxx*ComputeSDF( p + k.xxx*h, i) );
 }
 

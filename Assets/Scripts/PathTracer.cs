@@ -12,6 +12,22 @@ public class PathTracer : MonoBehaviour
     {
         public RenderTexture Target1;
         public RenderTexture Target2;
+        public int Swap;
+
+        public void SwapBuffers()
+        {
+            Swap = 1 - Swap;
+        }
+
+        public RenderTexture GetFront()
+        {
+            return (Swap == 0) ? Target1 : Target2;
+        }
+
+        public RenderTexture GetBack()
+        {
+            return (Swap == 0) ? Target2 : Target1;
+        }
     }
 
     struct SDFObjectData
@@ -35,6 +51,8 @@ public class PathTracer : MonoBehaviour
     private int RenderID;
 
     private Dictionary<Camera, RenderBuffers> Buffers = new Dictionary<Camera, RenderBuffers>();
+    private Dictionary<Camera, CommandBuffer> CommandBuffers = new Dictionary<Camera, CommandBuffer>();
+    private List<Camera> Cameras = new List<Camera>();
 
     private Mesh quad;
     public Material material;
@@ -47,17 +65,34 @@ public class PathTracer : MonoBehaviour
         return (a + b - 1) / b;
     }
 
+    public bool isEnabled = false;
+
+    private void StartRender()
+    {
+        if(!isEnabled)
+        {
+            int SDFObjSize = Marshal.SizeOf(typeof(SDFObjectData));
+            SDFObjects = new ComputeBuffer(objects.Count, SDFObjSize);
+
+            RenderShaders = Resources.Load("RenderShaders") as ComputeShader;
+            RenderID = RenderShaders.FindKernel("Render");
+
+            quad = PrimitiveHelper.GetPrimitiveMesh(PrimitiveType.Quad);
+            Camera.onPreRender += RenderCallBack;
+
+            isEnabled = true;
+        }
+    }
+
+    private void OnEnable()
+    {
+        StartRender();
+    }
+
     // Start is called before the first frame update
     void Start()
     {
-        int SDFObjSize = Marshal.SizeOf(typeof(SDFObjectData));
-        SDFObjects = new ComputeBuffer(objects.Count, SDFObjSize);
-
-        RenderShaders = Resources.Load("RenderShaders") as ComputeShader;
-        RenderID = RenderShaders.FindKernel("Render");
-
-        quad = PrimitiveHelper.GetPrimitiveMesh(PrimitiveType.Quad);
-        Camera.onPreRender += RenderCallBack;
+        StartRender();
     }
 
     private bool CreateTexture(ref RenderTexture texture, Vector2Int resolution, FilterMode filterMode, int depth, RenderTextureFormat format,
@@ -82,6 +117,8 @@ public class PathTracer : MonoBehaviour
 
     void RenderCallBack(Camera cam)
     {
+        if (!isEnabled) return;
+
         CameraEvent cameraEvent = (cam.actualRenderingPath == RenderingPath.Forward) ? CameraEvent.BeforeForwardAlpha : CameraEvent.AfterLighting;
 
         CommandBuffer[] cbs = cam.GetCommandBuffers(cameraEvent);
@@ -94,6 +131,8 @@ public class PathTracer : MonoBehaviour
                 name = "PointCloudRender"
             };
             cam.AddCommandBuffer(cameraEvent, cb);
+            CommandBuffers[cam] = cb;
+            Cameras.Add(cam);
         }
         else //get old command buffer
         {
@@ -108,6 +147,7 @@ public class PathTracer : MonoBehaviour
         {
             RenderBuffers renderBuffers;
             renderBuffers = new RenderBuffers();
+            renderBuffers.Swap = 0;
             Vector2Int textureResolution = new Vector2Int(cam.pixelWidth, cam.pixelHeight);
             isDirty = CreateTexture(ref renderBuffers.Target1, textureResolution, FilterMode.Point, 0, RenderTextureFormat.ARGBHalf) || isDirty;
             isDirty = CreateTexture(ref renderBuffers.Target2, textureResolution, FilterMode.Point, 0, RenderTextureFormat.ARGBHalf) || isDirty;
@@ -131,15 +171,17 @@ public class PathTracer : MonoBehaviour
         cb.SetComputeMatrixParam(RenderShaders, "ProjectionInverse",ProjectionInverse);
 
         cb.SetComputeBufferParam(RenderShaders, RenderID, "SDFObjects", SDFObjects);
-        cb.SetComputeTextureParam(RenderShaders, RenderID, "Previous", Buffers[cam].Target1);
-        cb.SetComputeTextureParam(RenderShaders, RenderID, "Target", Buffers[cam].Target2);
+        cb.SetComputeTextureParam(RenderShaders, RenderID, "Previous", Buffers[cam].GetBack());
+        cb.SetComputeTextureParam(RenderShaders, RenderID, "Target", Buffers[cam].GetFront());
         cb.DispatchCompute(RenderShaders, RenderID, IntDivideCeil(cam.pixelWidth, RENDER_THREADBLOCK), IntDivideCeil(cam.pixelHeight, RENDER_THREADBLOCK), 1);
         
         cb.SetGlobalVector("Resolution", new Vector2(cam.pixelWidth, cam.pixelHeight));
-        cb.SetGlobalTexture("Render", Buffers[cam].Target2);
+        cb.SetGlobalTexture("Render", Buffers[cam].GetFront());
         cb.SetGlobalFloat("exposure", exposure);
         cb.SetGlobalInt("iFrame", iFrame);
         cb.DrawMesh(quad, Matrix4x4.identity, material, 0);
+
+        Buffers[cam].SwapBuffers();
     }
 
     // Update is called once per frame
@@ -159,5 +201,26 @@ public class PathTracer : MonoBehaviour
         }
         
         SDFObjects.SetData(objs);
+
+        iFrame++;
+    }
+
+    private void OnDisable()
+    {
+        foreach (var cam in Cameras)
+        {
+            CommandBuffers[cam].Clear();
+        }
+
+        Camera.onPreRender -= RenderCallBack;
+
+        if (SDFObjects != null)
+            SDFObjects.Release();
+
+        Buffers.Clear();
+        CommandBuffers.Clear();
+        Cameras.Clear();
+
+        isEnabled = false;
     }
 }

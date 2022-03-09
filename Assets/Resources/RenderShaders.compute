@@ -8,6 +8,10 @@
 #define RAY_MARCHING_HIT_THRESHOLD 0.001
 #define RAY_MARCHING_MAX_DISTANCE 100.0
 
+#define PATH_TRACE_DEPTH 4
+
+#define BACKGROUND float3(1,1,1)
+
 int iFrame;
 float Accumulation;
 
@@ -15,41 +19,84 @@ float Accumulation;
 
 #ifdef RENDER
 
-#define RAY_MARCHING_MAX_STEPS 256
 
 Texture2D<float4> Previus;
+SamplerState samplerPrevius;
+
 RWTexture2D<float4> Target;
 
-[numthreads(RENDER_THREADBLOCK, RENDER_THREADBLOCK, 1)]
-void Render(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
+float4 SamplePrevious(float2 uv)
 {
-    uint2 pix = DTid.xy;
+    return Previus.SampleLevel(samplerPrevius, uv, 0);
+}
 
-    Ray ray = computeCameraRay(pix);
-
+int TraceRay(inout Ray r)
+{
     float depth = 0.0;
     int hit_object = -1;
 
     for (int i = 0; i < RAY_MARCHING_MAX_STEPS; i++)
     {
         int ID = 0;
-        float sdf = SceneSDF(ray.origin + ray.direction * depth, ID);
+        float sdf = SceneSDF(r.origin + r.direction * depth, ID);
         depth += sdf;
-        if(sdf < max(RAY_MARCHING_CONE_ANGLE * depth, RAY_MARCHING_HIT_THRESHOLD))
+        float min_distance = max(RAY_MARCHING_CONE_ANGLE * (r.distance + depth), RAY_MARCHING_HIT_THRESHOLD);
+        if(sdf < min_distance)
         {
             hit_object = ID;
+            depth = depth - sdf + (sdf - min_distance);
             break;
         }
-        if (depth > RAY_MARCHING_MAX_DISTANCE)
+        if ((r.distance + depth) > RAY_MARCHING_MAX_DISTANCE)
         {
             break;
         }
     }
 
-    float3 pos = ray.origin + ray.direction * depth;
-    float3 col = abs(pos)/10.0;
+    r.distance += depth;
+    r.origin += r.direction * depth;
 
-    Target[pix] = float4(col, 1.0);
+    return hit_object;
+}
+
+float4 PathTrace(inout Ray r)
+{
+    float3 col = 0.0; //incoming light into the camera
+    float3 att = 1.0; //total light attenuation 
+
+    for (int i = 0; i < PATH_TRACE_DEPTH; i++)
+    {
+        int hit = TraceRay(r);
+        if(hit >= 0) //has hit an object
+        {
+            float3 normal = Normal(r.origin, hit);
+            r.origin += normal * RAY_MARCHING_CONE_ANGLE * r.distance;
+            r.direction = normalize(normal + udir());
+        }
+        else //has hit sky
+        {
+            col += att*BACKGROUND;
+        }
+    }
+
+    return float4(col,1.0);
+}
+
+
+[numthreads(RENDER_THREADBLOCK, RENDER_THREADBLOCK, 1)]
+void Render(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
+{
+    uint2 pix = DTid.xy;
+
+    InitializeRand(iFrame, pix);
+
+    Ray camera_ray = computeCameraRay(pix);
+
+    Ray path_ray = camera_ray;
+
+    float4 col = PathTrace(path_ray);
+
+    Target[pix] = col;
 }
 
 #endif //RENDER
