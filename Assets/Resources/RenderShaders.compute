@@ -20,14 +20,14 @@ float Accumulation;
 #ifdef RENDER
 
 
-Texture2D<float4> Previus;
-SamplerState samplerPrevius;
+Texture2D<float4> Previous;
+SamplerState samplerPrevious;
 
 RWTexture2D<float4> Target;
 
 float4 SamplePrevious(float2 uv)
 {
-    return Previus.SampleLevel(samplerPrevius, uv, 0);
+    return Previous.SampleLevel(samplerPrevious, uv, 0);
 }
 
 int TraceRay(inout Ray r)
@@ -72,10 +72,12 @@ float4 PathTrace(inout Ray r)
             float3 normal = Normal(r.origin, hit);
             r.origin += normal * RAY_MARCHING_CONE_ANGLE * r.distance;
             r.direction = normalize(normal + udir());
+            att *= 0.9;
         }
         else //has hit sky
         {
             col += att*BACKGROUND;
+            break;
         }
     }
 
@@ -94,9 +96,11 @@ void Render(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid
 
     Ray path_ray = camera_ray;
 
+    float4 prev_col = Previous[pix];
+
     float4 col = PathTrace(path_ray);
 
-    Target[pix] = col;
+    Target[pix] = lerp(col, prev_col, Accumulation);
 }
 
 #endif //RENDER

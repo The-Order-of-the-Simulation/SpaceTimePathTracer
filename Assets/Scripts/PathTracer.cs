@@ -8,11 +8,11 @@ using System.Runtime.InteropServices;
 public class PathTracer : MonoBehaviour
 {
     const int RENDER_THREADBLOCK = 16;
-    struct RenderBuffers
+    class RenderBuffers
     {
         public RenderTexture Target1;
         public RenderTexture Target2;
-        public int Swap;
+        public int Swap = 0;
 
         public void SwapBuffers()
         {
@@ -139,15 +139,13 @@ public class PathTracer : MonoBehaviour
             cb = cbs[0];
         }
 
-        bool isDirty = false;
-
-
 
         if (!Buffers.ContainsKey(cam) || Buffers[cam].Target1.width != cam.pixelWidth || Buffers[cam].Target1.height != cam.pixelHeight)
         {
+            bool isDirty = false;
+
             RenderBuffers renderBuffers;
             renderBuffers = new RenderBuffers();
-            renderBuffers.Swap = 0;
             Vector2Int textureResolution = new Vector2Int(cam.pixelWidth, cam.pixelHeight);
             isDirty = CreateTexture(ref renderBuffers.Target1, textureResolution, FilterMode.Point, 0, RenderTextureFormat.ARGBHalf) || isDirty;
             isDirty = CreateTexture(ref renderBuffers.Target2, textureResolution, FilterMode.Point, 0, RenderTextureFormat.ARGBHalf) || isDirty;
@@ -180,8 +178,6 @@ public class PathTracer : MonoBehaviour
         cb.SetGlobalFloat("exposure", exposure);
         cb.SetGlobalInt("iFrame", iFrame);
         cb.DrawMesh(quad, Matrix4x4.identity, material, 0);
-
-        Buffers[cam].SwapBuffers();
     }
 
     // Update is called once per frame
@@ -203,6 +199,11 @@ public class PathTracer : MonoBehaviour
         SDFObjects.SetData(objs);
 
         iFrame++;
+
+        foreach (var cam in Cameras)
+        {
+            Buffers[cam].SwapBuffers();
+        }
     }
 
     private void OnDisable()

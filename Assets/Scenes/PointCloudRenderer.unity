@@ -123,6 +123,50 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!1 &98703000
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 98703002}
+  - component: {fileID: 98703001}
+  m_Layer: 0
+  m_Name: SDF3
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &98703001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 98703000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 74fb51f98e095434d8d89631b9772f70, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  type: 1
+--- !u!4 &98703002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 98703000}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.046, y: -1.42, z: 0.135}
+  m_LocalScale: {x: 5, y: 0.32438004, z: 5}
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_RootOrder: 5
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &485562374
 GameObject:
   m_ObjectHideFlags: 0
@@ -260,7 +304,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 992656457}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.046, y: -0.02, z: 0.135}
+  m_LocalPosition: {x: -0.046, y: -1.111, z: 0.135}
   m_LocalScale: {x: 0.30773175, y: 0.30773175, z: 0.30773175}
   m_Children: []
   m_Father: {fileID: 0}
@@ -304,7 +348,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1109400970}
   m_LocalRotation: {x: 0.10787302, y: -0.26391047, z: -0.36265796, w: 0.88723946}
-  m_LocalPosition: {x: -0.91, y: -0.02, z: -1.185}
+  m_LocalPosition: {x: -0.91, y: -1.02, z: -1.185}
   m_LocalScale: {x: 0.8794658, y: 0.8794658, z: 0.8794658}
   m_Children: []
   m_Father: {fileID: 0}
@@ -342,9 +386,10 @@ MonoBehaviour:
   objects:
   - {fileID: 1109400971}
   - {fileID: 992656458}
+  - {fileID: 98703001}
   material: {fileID: 2100000, guid: a14efc8de63c09244adbfe509a738742, type: 2}
-  exposure: 0.12
-  acc: 0.23
+  exposure: 1.5
+  acc: 0.15
   isEnabled: 0
 --- !u!4 &1734260518
 Transform:
