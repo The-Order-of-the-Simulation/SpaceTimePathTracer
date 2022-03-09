@@ -19,9 +19,9 @@ struct Ray
     float3 direction;
 };
 
-Ray computeCameraRay(uint2 pix)
+Ray computeCameraRay(float2 pix)
 {
-    float4 clipPosition = float4(float2(2.0, -2.0) * (float2(pix) / CameraResolution.xy - 0.5), 1.0f, 1.0f);
+    float4 clipPosition = float4(float2(2.0, -2.0) * (pix / CameraResolution.xy - 0.5), 1.0f, 1.0f);
     float3 localDirection = mul(ProjectionInverse, clipPosition).xyz;
 	float3 worldDirection = mul(transpose(View), float4(localDirection, 0.0f)).xyz;
     Ray ray;
@@ -218,3 +218,9 @@ float3 Normal(float3 p, int i)
                       k.xxx*ComputeSDF( p + k.xxx*h, i) );
 }
 
+struct Material
+{
+    float3 color;
+    float roughness;
+    float metal;
+};

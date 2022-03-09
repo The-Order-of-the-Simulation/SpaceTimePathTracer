@@ -78,7 +78,8 @@ float4 PathTrace(inout Ray r)
         {
             float3 normal = Normal(r.origin, hit);
             r.origin += normal * RAY_MARCHING_CONE_ANGLE * r.distance;
-            r.direction = normalize(normal + udir());
+            float3 refl_ray = reflect(r.direction, normal);
+            r.direction = normalize(refl_ray + 0.2*udir());
             att *= 0.9;
         }
         else //has hit sky
@@ -99,7 +100,7 @@ void Render(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid
 
     InitializeRand(iFrame, pix);
 
-    Ray camera_ray = computeCameraRay(pix);
+    Ray camera_ray = computeCameraRay(pix + rand2());
 
     Ray path_ray = camera_ray;
 

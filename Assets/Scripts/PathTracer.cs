@@ -67,7 +67,7 @@ public class PathTracer : MonoBehaviour
         return (a + b - 1) / b;
     }
 
-    public bool isEnabled = false;
+    private bool isEnabled = false;
 
     private void StartRender()
     {
