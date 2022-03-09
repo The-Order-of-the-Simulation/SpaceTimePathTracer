@@ -102,22 +102,19 @@ public class PathTracer : MonoBehaviour
 
         bool isDirty = false;
 
-        RenderBuffers renderBuffers;
 
-        if (!Buffers.ContainsKey(cam))
+
+        if (!Buffers.ContainsKey(cam) || Buffers[cam].Target1.width != cam.pixelWidth || Buffers[cam].Target1.height != cam.pixelHeight)
         {
+            RenderBuffers renderBuffers;
             renderBuffers = new RenderBuffers();
+            Vector2Int textureResolution = new Vector2Int(cam.pixelWidth, cam.pixelHeight);
+            isDirty = CreateTexture(ref renderBuffers.Target1, textureResolution, FilterMode.Point, 0, RenderTextureFormat.ARGBHalf) || isDirty;
+            isDirty = CreateTexture(ref renderBuffers.Target2, textureResolution, FilterMode.Point, 0, RenderTextureFormat.ARGBHalf) || isDirty;
+
             Buffers[cam] = renderBuffers;
         }
-        else
-        {
-            renderBuffers = Buffers[cam];
-        }
-
-        Vector2Int textureResolution = new Vector2Int(cam.pixelWidth, cam.pixelHeight);
-        isDirty = CreateTexture(ref renderBuffers.Target1, textureResolution, FilterMode.Point, 0, RenderTextureFormat.ARGBHalf) || isDirty;
-        isDirty = CreateTexture(ref renderBuffers.Target2, textureResolution, FilterMode.Point, 0, RenderTextureFormat.ARGBHalf) || isDirty;
-
+      
         Matrix4x4 View = cam.worldToCameraMatrix;
         Matrix4x4 Projection = GL.GetGPUProjectionMatrix(cam.projectionMatrix, true);
         Matrix4x4 ProjectionInverse = Projection.inverse;
@@ -134,12 +131,12 @@ public class PathTracer : MonoBehaviour
         cb.SetComputeMatrixParam(RenderShaders, "ProjectionInverse",ProjectionInverse);
 
         cb.SetComputeBufferParam(RenderShaders, RenderID, "SDFObjects", SDFObjects);
-        cb.SetComputeTextureParam(RenderShaders, RenderID, "Previous", renderBuffers.Target1);
-        cb.SetComputeTextureParam(RenderShaders, RenderID, "Target", renderBuffers.Target2);
+        cb.SetComputeTextureParam(RenderShaders, RenderID, "Previous", Buffers[cam].Target1);
+        cb.SetComputeTextureParam(RenderShaders, RenderID, "Target", Buffers[cam].Target2);
         cb.DispatchCompute(RenderShaders, RenderID, IntDivideCeil(cam.pixelWidth, RENDER_THREADBLOCK), IntDivideCeil(cam.pixelHeight, RENDER_THREADBLOCK), 1);
         
         cb.SetGlobalVector("Resolution", new Vector2(cam.pixelWidth, cam.pixelHeight));
-        cb.SetGlobalTexture("Render", renderBuffers.Target2);
+        cb.SetGlobalTexture("Render", Buffers[cam].Target2);
         cb.SetGlobalFloat("exposure", exposure);
         cb.SetGlobalInt("iFrame", iFrame);
         cb.DrawMesh(quad, Matrix4x4.identity, material, 0);
@@ -160,7 +157,7 @@ public class PathTracer : MonoBehaviour
 
             objs[i] = objData;
         }
-
+        
         SDFObjects.SetData(objs);
     }
 }
