@@ -230,6 +230,7 @@ struct Material
 {
     float3 color;
     float roughness;
+    float3 glow;
     float metal;
 };
 

@@ -101,7 +101,7 @@ float4 PathTrace(inout Ray r)
             float3 normal = Normal(r.origin, hit);
             r.origin += normal * RAY_MARCHING_CONE_ANGLE * r.distance;
             float3 refl_ray = reflect(r.direction, normal);
-            r.direction = normalize(nrand3(0.02, refl_ray));
+            r.direction = normalize(nrand3(0.5, refl_ray));
             att *= 0.9;
         }
         else //trace exit
