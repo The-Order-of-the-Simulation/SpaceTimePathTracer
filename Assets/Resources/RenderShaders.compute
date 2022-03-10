@@ -17,7 +17,7 @@ float Accumulation;
 
 #define PATH_TRACE_DEPTH 4
 
-#define GEODESIC_TRACE
+//#define GEODESIC_TRACE
 
 #ifdef RENDER
 
