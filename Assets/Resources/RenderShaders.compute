@@ -2,20 +2,22 @@
 
 #pragma kernel Render RENDER
 
-#define RENDER_THREADBLOCK 16
-#define RAY_MARCHING_MAX_STEPS 256
-#define RAY_MARCHING_CONE_ANGLE 0.005
-#define RAY_MARCHING_HIT_THRESHOLD 0.001
-#define RAY_MARCHING_MAX_DISTANCE 100.0
-
-#define PATH_TRACE_DEPTH 4
-
-#define BACKGROUND float3(1,1,1)
 
 int iFrame;
 float Accumulation;
 
 #include<Utils.cginc>
+#include<GeodesicUtils.cginc>
+
+#define RENDER_THREADBLOCK 16
+#define RAY_MARCHING_MAX_STEPS 256
+#define RAY_MARCHING_CONE_ANGLE 0.005
+#define RAY_MARCHING_HIT_THRESHOLD 0.1
+#define RAY_MARCHING_MAX_DISTANCE 5000.0
+
+#define PATH_TRACE_DEPTH 4
+
+#define BACKGROUND float3(1,1,1)
 
 #ifdef RENDER
 
@@ -42,26 +44,52 @@ int TraceRay(inout Ray r)
     float depth = 0.0;
     int hit_object = -1;
 
+    SpaceTimeRay sr;
+
+    sr.Q = float4(0., r.origin);
+    sr.Qt = float4(1, 0, 0, 0);
+    sr.P = normalize(Vec2P(r.direction, sr.Q.yzw));
+    sr.Dir = r.direction;
+
+    float4 Dsphere = 0.0;
+
     for (int i = 0; i < RAY_MARCHING_MAX_STEPS; i++)
     {
-        int ID = 0;
-        float sdf = SceneSDF(r.origin + r.direction * depth, ID);
-        depth += sdf;
-        float min_distance = max(RAY_MARCHING_CONE_ANGLE * (r.distance + depth), RAY_MARCHING_HIT_THRESHOLD);
-        if(sdf < min_distance)
+        //if outside of Dsphere sample SDF
+        if(Dsphere.w < GEODESIC_DT || distance(sr.Q.yzw, Dsphere.xyz) > Dsphere.w)
         {
-            hit_object = ID;
-            depth = depth - sdf + (sdf - min_distance);
-            break;
+            int ID = 0;
+            float sdf = SceneSDF(sr.Q.yzw, ID);
+            Dsphere = float4(sr.Q.yzw, sdf);
+
+            if(sdf < GEODESIC_DT)
+            {
+                sr.Q.yzw += sr.Dir * sdf;
+            }
+
+            depth = distance(sr.Q.yzw, r.origin);
+
+            float min_distance = max(RAY_MARCHING_CONE_ANGLE * (r.distance + depth), RAY_MARCHING_HIT_THRESHOLD);
+            if(sdf < min_distance)
+            {
+                hit_object = ID;
+                depth -= min_distance;
+                sr.Q.yzw -= sr.Dir * min_distance;
+                break;
+            }
+            if ((r.distance + depth) > RAY_MARCHING_MAX_DISTANCE)
+            {
+                break;
+            }
         }
-        if ((r.distance + depth) > RAY_MARCHING_MAX_DISTANCE)
-        {
-            break;
-        }
+
+        if(Dsphere.w > GEODESIC_DT)
+            hstep(sr); //integrate geodesic
     }
 
     r.distance += depth;
-    r.origin += r.direction * depth;
+    r.origin = sr.Q.yzw;
+    r.direction = sr.Dir;
 
     return hit_object;
 }

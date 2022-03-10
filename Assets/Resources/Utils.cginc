@@ -224,3 +224,48 @@ struct Material
     float roughness;
     float metal;
 };
+
+//optimized inverse of symmetric matrix
+float4x4 inverse_sym(float4x4 m) {
+	float n11 = m[0][0], n12 = m[1][0], n13 = m[2][0], n14 = m[3][0];
+	float n22 = m[1][1], n23 = m[2][1], n24 = m[3][1];
+	float n33 = m[2][2], n34 = m[3][2];
+	float n44 = m[3][3];
+
+	float t11 = 2.0 * n23 * n34 * n24 - n24 * n33 * n24 - n22 * n34 * n34 - n23 * n23 * n44 + n22 * n33 * n44;
+	float t12 = n14 * n33 * n24 - n13 * n34 * n24 - n14 * n23 * n34 + n12 * n34 * n34 + n13 * n23 * n44 - n12 * n33 * n44;
+	float t13 = n13 * n24 * n24 - n14 * n23 * n24 + n14 * n22 * n34 - n12 * n24 * n34 - n13 * n22 * n44 + n12 * n23 * n44;
+	float t14 = n14 * n23 * n23 - n13 * n24 * n23 - n14 * n22 * n33 + n12 * n24 * n33 + n13 * n22 * n34 - n12 * n23 * n34;
+
+	float det = n11 * t11 + n12 * t12 + n13 * t13 + n14 * t14;
+	float idet = 1.0f / det;
+
+	float4x4 ret;
+
+	ret[0][0] = t11 * idet;
+	ret[0][1] = (n24 * n33 * n14 - n23 * n34 * n14 - n24 * n13 * n34 + n12 * n34 * n34 + n23 * n13 * n44 - n12 * n33 * n44) * idet;
+	ret[0][2] = (n22 * n34 * n14 - n24 * n23 * n14 + n24 * n13 * n24 - n12 * n34 * n24 - n22 * n13 * n44 + n12 * n23 * n44) * idet;
+	ret[0][3] = (n23 * n23 * n14 - n22 * n33 * n14 - n23 * n13 * n24 + n12 * n33 * n24 + n22 * n13 * n34 - n12 * n23 * n34) * idet;
+
+	ret[1][0] = ret[0][1];
+	ret[1][1] = (2.0 * n13 * n34 * n14 - n14 * n33 * n14 - n11 * n34 * n34 - n13 * n13 * n44 + n11 * n33 * n44) * idet;
+	ret[1][2] = (n14 * n23 * n14 - n12 * n34 * n14 - n14 * n13 * n24 + n11 * n34 * n24 + n12 * n13 * n44 - n11 * n23 * n44) * idet;
+	ret[1][3] = (n12 * n33 * n14 - n13 * n23 * n14 + n13 * n13 * n24 - n11 * n33 * n24 - n12 * n13 * n34 + n11 * n23 * n34) * idet;
+
+	ret[2][0] = ret[0][2];
+	ret[2][1] = ret[1][2];
+    ret[2][2] = (2.0 * n12 * n24 * n14 - n14 * n22 * n14 - n11 * n24 * n24 - n12 * n12 * n44 + n11 * n22 * n44) * idet;
+	ret[2][3] = (n13 * n22 * n14 - n12 * n23 * n14 - n13 * n12 * n24 + n11 * n23 * n24 + n12 * n12 * n34 - n11 * n22 * n34) * idet;
+
+	ret[3][0] = ret[0][3];
+	ret[3][1] = ret[1][3];
+	ret[3][2] = ret[2][3];
+	ret[3][3] = (2.0 * n12 * n23 * n13 - n13 * n22 * n13 - n11 * n23 * n23 - n12 * n12 * n33 + n11 * n22 * n33) * idet;
+
+	return ret;
+}
+
+float sqr(float x)
+{
+    return x * x;
+}
