@@ -5,7 +5,7 @@
 
 #define FLAT_SPACE float4x4(-1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1)
 
-#define GEODESIC_DT 2.0
+#define GEODESIC_DT 0.05
 
 struct SpaceTimeRay
 {
@@ -39,9 +39,10 @@ float4x4 AlcubierreMetricDeviation(float4 q)
 float4x4 KerrMetricDeviation(float4 q)
 {
     //kerr params
-    const float a = 0.5;
+    const float a = 0.99;
     const float m = 1.0;
     const float Q = 0.0;
+
     //Kerr metric in Kerr-Schild coordinates 
     float3 p = q.yzw;
     float rho = dot(p,p) - a*a;
@@ -56,7 +57,7 @@ float4x4 KerrMetricDeviation(float4 q)
 float4x4 KerrMetricInverseDeviation(float4 q)
 {
     //kerr params
-    const float a = 0.5;
+    const float a = 0.99;
     const float m = 1.0;
     const float Q = 0.0;
     //inverse of kerr metric in Kerr-Schild coordinates 
@@ -72,6 +73,21 @@ float4x4 KerrMetricInverseDeviation(float4 q)
     etak *= f;
 
     return float4x4(-k.x*etak, k.y*etak, k.z*etak, k.w*etak);  
+}
+
+bool StopCondition(float3 p, float3 dir)
+{
+    //kerr params
+    const float a = 0.99;
+    const float m = 1.0;
+    const float Q = 0.0;
+
+    float rho = dot(p,p) - a*a;
+    float r = sqrt(0.5*(rho + sqrt(rho*rho + 4.0*a*a*p.z*p.z)));
+    float rdotq = dot(p, dir);
+    //under the horizon
+    if (r < 1.0) return true;
+    else return false;
 }
 
 //space time metric
@@ -120,7 +136,7 @@ float H(float4 p, float4 q)
 }
 
 //Hamilton's equations simple integration step
-void hstep(inout SpaceTimeRay r)
+bool hstep(inout SpaceTimeRay r, float max_distance)
 {    
     const float2 dq = float2(0, NUMERICAL_DERIVATIVE_EPS);
 
@@ -128,9 +144,12 @@ void hstep(inout SpaceTimeRay r)
     float4 qt = mul(ginv,r.P);
     float3 dHdq = (float3(L(qt,r.Q+dq.xyxx),L(qt,r.Q+dq.xxyx),L(qt,r.Q+dq.xxxy))-H(r.P, ginv))/dq.y; 
 
-    float dt1 = clamp(1. / length(qt.yzw), 0.1, 4.0);
+    float dt = clamp(GEODESIC_DT * length(r.P.yzw) / (length(dHdq) + 0.01), 0.01, 0.5*max_distance/(length(qt.yzw) + 0.01));
+
     r.Qt = qt;
     r.Dir = normalize(qt.yzw);
-    r.P += float4(0, dHdq)*GEODESIC_DT*dt1;
-    r.Q += 2.0*qt*GEODESIC_DT*dt1;
+    r.P += float4(0, dHdq)*dt;
+    r.Q += 2.0*qt*dt;
+
+    return StopCondition(r.Q.yzw, r.Dir);
 }

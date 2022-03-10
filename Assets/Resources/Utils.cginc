@@ -58,6 +58,14 @@ float2 nrand2(float sigma, float2 mean)
     return mean + sigma * sqrt(-2.0 * log(Z.x)) * float2(cos(TWO_PI * Z.y), sin(TWO_PI * Z.y));
 }
 
+float3 nrand3(float sigma, float3 mean)
+{
+	float4 Z = rand4();
+    return mean + sigma * sqrt(-2.0 * log(Z.xxy)) * 
+           float3(cos(TWO_PI * Z.z),sin(TWO_PI * Z.z),cos(TWO_PI * Z.w));
+}
+
+
 float2 cmul(float2 x, float2 y)
 {
     return float2(x.x * y.x - x.y * y.y, x.x * y.y + x.y * y.x);

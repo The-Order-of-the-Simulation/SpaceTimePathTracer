@@ -55,36 +55,30 @@ int TraceRay(inout Ray r)
 
     for (int i = 0; i < RAY_MARCHING_MAX_STEPS; i++)
     {
-        //if outside of Dsphere sample SDF
-        if(Dsphere.w < GEODESIC_DT || distance(sr.Q.yzw, Dsphere.xyz) > Dsphere.w)
+        int ID = 0;
+        float sdf = SceneSDF(sr.Q.yzw, ID);
+        Dsphere = float4(sr.Q.yzw, sdf);
+
+        depth = distance(sr.Q.yzw, r.origin);
+
+        float min_distance = max(RAY_MARCHING_CONE_ANGLE * (r.distance + depth), RAY_MARCHING_HIT_THRESHOLD);
+        if(sdf < min_distance)
         {
-            int ID = 0;
-            float sdf = SceneSDF(sr.Q.yzw, ID);
-            Dsphere = float4(sr.Q.yzw, sdf);
-
-            if(sdf < GEODESIC_DT)
-            {
-                sr.Q.yzw += sr.Dir * sdf;
-            }
-
-            depth = distance(sr.Q.yzw, r.origin);
-
-            float min_distance = max(RAY_MARCHING_CONE_ANGLE * (r.distance + depth), RAY_MARCHING_HIT_THRESHOLD);
-            if(sdf < min_distance)
-            {
-                hit_object = ID;
-                depth -= min_distance;
-                sr.Q.yzw -= sr.Dir * min_distance;
-                break;
-            }
-            if ((r.distance + depth) > RAY_MARCHING_MAX_DISTANCE)
-            {
-                break;
-            }
+            hit_object = ID;
+            depth -= min_distance;
+            sr.Q.yzw -= sr.Dir * min_distance;
+            break;
+        }
+        if ((r.distance + depth) > RAY_MARCHING_MAX_DISTANCE)
+        {
+            break;
         }
 
-        if(Dsphere.w > GEODESIC_DT)
-            hstep(sr); //integrate geodesic
+        if (hstep(sr, abs(sdf))) //integrate geodesic
+        {
+            hit_object = -2; //event horizon
+            break;
+        }
     }
 
     r.distance += depth;
@@ -102,17 +96,17 @@ float4 PathTrace(inout Ray r)
     for (int i = 0; i < PATH_TRACE_DEPTH; i++)
     {
         int hit = TraceRay(r);
-        if(hit >= 0) //has hit an object
+        if (hit >= 0) //has hit an object
         {
             float3 normal = Normal(r.origin, hit);
             r.origin += normal * RAY_MARCHING_CONE_ANGLE * r.distance;
             float3 refl_ray = reflect(r.direction, normal);
-            r.direction = normalize(refl_ray + 0.2*udir());
+            r.direction = normalize(nrand3(0.02, refl_ray));
             att *= 0.9;
         }
-        else //has hit sky
+        else //trace exit
         {
-            col += att*SampleBackground(r.direction);
+            if (hit == -1) col += att * SampleBackground(r.direction);
             break;
         }
     }
