@@ -64,7 +64,8 @@ float4x4 KerrMetricInverseDeviation(float4 q)
     float rho = dot(p,p) - a*a;
     float r2 = 0.5*(rho + sqrt(rho*rho + 4.0*a*a*p.z*p.z));
     float r = sqrt(r2);
-    float4 k = float4(1.0, (r*p.x + a*p.y)/(r2 + a*a), (r*p.y - a*p.x)/(r2 + a*a), p.z/r);
+    float r2aa = 1.0/(r2 + a * a);
+    float4 k = float4(1.0, (r*p.x + a*p.y)*r2aa, (r*p.y - a*p.x)*r2aa, p.z/r);
 
     float4 etak = float4(k.x, -k.yzw);
     float f = r2*(2.0*m*r - Q*Q)/((1.0 + dot(etak, k))*(r2*r2 + a*a*p.z*p.z));
