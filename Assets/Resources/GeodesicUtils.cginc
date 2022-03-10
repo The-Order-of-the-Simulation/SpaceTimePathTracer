@@ -33,6 +33,8 @@ float4x4 AlcubierreMetricDeviation(float4 q)
                     0,     0,  0,  0);
 }
 
+
+
 //the deviation from flat space for a kerr metric
 float4x4 KerrMetricDeviation(float4 q)
 {
@@ -40,7 +42,6 @@ float4x4 KerrMetricDeviation(float4 q)
     const float a = 0.5;
     const float m = 1.0;
     const float Q = 0.0;
-
     //Kerr metric in Kerr-Schild coordinates 
     float3 p = q.yzw;
     float rho = dot(p,p) - a*a;
@@ -52,10 +53,35 @@ float4x4 KerrMetricDeviation(float4 q)
     return float4x4(k.x*k1, k.y*k1, k.z*k1, k.w*k1);    
 }
 
+float4x4 KerrMetricInverseDeviation(float4 q)
+{
+    //kerr params
+    const float a = 0.5;
+    const float m = 1.0;
+    const float Q = 0.0;
+    //inverse of kerr metric in Kerr-Schild coordinates 
+    float3 p = q.yzw;
+    float rho = dot(p,p) - a*a;
+    float r2 = 0.5*(rho + sqrt(rho*rho + 4.0*a*a*p.z*p.z));
+    float r = sqrt(r2);
+    float4 k = float4(1.0, (r*p.x + a*p.y)/(r2 + a*a), (r*p.y - a*p.x)/(r2 + a*a), p.z/r);
+
+    float4 etak = float4(k.x, -k.yzw);
+    float f = r2*(2.0*m*r - Q*Q)/((1.0 + dot(etak, k))*(r2*r2 + a*a*p.z*p.z));
+    etak *= f;
+
+    return float4x4(-k.x*etak, k.y*etak, k.z*etak, k.w*etak);  
+}
+
 //space time metric
 float4x4 G(float4 q)
 {
     return FLAT_SPACE + KerrMetricDeviation(q);
+}
+
+float4x4 Ginv(float4 q)
+{
+    return FLAT_SPACE + KerrMetricInverseDeviation(q);
 }
 
 //lagrangian
@@ -78,7 +104,7 @@ float4 Vec2P(float3 v, float3 x)
 
 float4 P2Vec(float4 p, float4 q)
 {
-    return mul(inverse_sym(G(q)),p);
+    return mul(Ginv(q),p);
 }
 
 float H(float4 p, float4x4 ginv)
@@ -89,29 +115,21 @@ float H(float4 p, float4x4 ginv)
 
 float H(float4 p, float4 q)
 {
-    float4x4 g = G(q);
-    float4x4 ginv = inverse_sym(g);//slow
-    return H(p, ginv);
+    return H(p, Ginv(q));
 }
 
 //Hamilton's equations simple integration step
 void hstep(inout SpaceTimeRay r)
 {    
     const float2 dq = float2(0, NUMERICAL_DERIVATIVE_EPS);
-    
-    
-    float4x4 g = G(r.Q);
-    float4x4 ginv = inverse_sym(g);//slow
 
+    float4x4 ginv = Ginv(r.Q);
     float4 qt = mul(ginv,r.P);
-    r.Qt = qt;
-    r.Dir = normalize(qt.yzw);
+    float3 dHdq = (float3(L(qt,r.Q+dq.xyxx),L(qt,r.Q+dq.xxyx),L(qt,r.Q+dq.xxxy))-H(r.P, ginv))/dq.y; 
 
     float dt1 = clamp(1. / length(qt.yzw), 0.1, 4.0);
-    
-    float4 dHdq = (float4(L(qt,r.Q+dq.yxxx),L(qt,r.Q+dq.xyxx),L(qt,r.Q+dq.xxyx),L(qt,r.Q+dq.xxxy))-L(qt, g))/dq.y; 
-
-
-    r.P += dHdq*GEODESIC_DT*dt1;
+    r.Qt = qt;
+    r.Dir = normalize(qt.yzw);
+    r.P += float4(0, dHdq)*GEODESIC_DT*dt1;
     r.Q += 2.0*qt*GEODESIC_DT*dt1;
 }
