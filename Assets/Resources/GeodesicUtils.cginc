@@ -5,7 +5,7 @@
 
 #define FLAT_SPACE float4x4(-1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1)
 
-#define GEODESIC_DT 0.05
+#define GEODESIC_DT 0.1
 
 struct SpaceTimeRay
 {
@@ -144,7 +144,7 @@ bool hstep(inout SpaceTimeRay r, float max_distance)
     float4 qt = mul(ginv,r.P);
     float3 dHdq = (float3(L(qt,r.Q+dq.xyxx),L(qt,r.Q+dq.xxyx),L(qt,r.Q+dq.xxxy))-H(r.P, ginv))/dq.y; 
 
-    float dt = clamp(GEODESIC_DT * length(r.P.yzw) / (length(dHdq) + 0.01), 0.01, 0.5*max_distance/(length(qt.yzw) + 0.01));
+    float dt = clamp(GEODESIC_DT * length(r.P.yzw) / (length(dHdq) + 0.0001), 0.01, 0.5*max_distance/(length(qt.yzw) + 0.0001));
 
     r.Qt = qt;
     r.Dir = normalize(qt.yzw);
