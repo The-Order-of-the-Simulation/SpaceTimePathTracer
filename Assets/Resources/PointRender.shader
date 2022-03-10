@@ -66,7 +66,7 @@ Shader "PointRender"
 			float3 tonemap(float3 x)
 			{
 				float l = length(x) / sqrt(3.0);
-				x =lerp(x,l,1.5*(smoothstep(0., 140.0, l) - 0.5));
+				x = lerp(x,l,1.5*(smoothstep(0., 140.0, l) - 0.5));
 				return pow(x, 0.57);
 			}
 
@@ -74,9 +74,9 @@ Shader "PointRender"
 			{
 				PSout fo;
 
-				float3 col = tex2D(Render, output.uv).xyz;
-				fo.color.xyz = tanh(exposure * tonemap(col));
-				//fo.color.xyz = col/256.0;
+				float4 col = tex2D(Render, output.uv);
+
+				fo.color.xyz = tanh(exposure * tonemap(col.xyz/col.w));
 				fo.depth = 0.0;
 
 				return fo;

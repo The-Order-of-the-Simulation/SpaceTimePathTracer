@@ -86,19 +86,19 @@ bool StopCondition(float3 p, float3 dir)
     float r = sqrt(0.5*(rho + sqrt(rho*rho + 4.0*a*a*p.z*p.z)));
     float rdotq = dot(p, dir);
     //under the horizon
-    if (r < 0.0) return true;
+    if (r < 1.0) return true;
     else return false;
 }
 
 //space time metric
 float4x4 G(float4 q)
 {
-    return FLAT_SPACE + 0.0*KerrMetricDeviation(q);
+    return FLAT_SPACE + KerrMetricDeviation(q);
 }
 
 float4x4 Ginv(float4 q)
 {
-    return FLAT_SPACE + 0.0*KerrMetricInverseDeviation(q);
+    return FLAT_SPACE + KerrMetricInverseDeviation(q);
 }
 
 //lagrangian

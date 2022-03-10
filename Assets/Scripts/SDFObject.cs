@@ -18,6 +18,7 @@ public class SDFObject : MonoBehaviour
     }
 
     public SDFType type;
+    public int Material = 0;
 
     void Start()
     {

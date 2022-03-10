@@ -158,8 +158,17 @@ struct SDFObjectData
     float4 rotation;
 };
 
+struct Material
+{
+    float3 color;
+    float roughness;
+    float3 glow;
+    float metal;
+};
+
 int SDFObjectCount;
 StructuredBuffer<SDFObjectData> SDFObjects;
+StructuredBuffer<Material> SDFMaterials;
 
 #define SDF_SPHERE 0
 #define SDF_BOX 1
@@ -225,14 +234,6 @@ float3 Normal(float3 p, int i)
                       k.yxy*ComputeSDF( p + k.yxy*h, i) + 
                       k.xxx*ComputeSDF( p + k.xxx*h, i) );
 }
-
-struct Material
-{
-    float3 color;
-    float roughness;
-    float3 glow;
-    float metal;
-};
 
 //optimized inverse of symmetric matrix
 float4x4 inverse_sym(float4x4 m) {

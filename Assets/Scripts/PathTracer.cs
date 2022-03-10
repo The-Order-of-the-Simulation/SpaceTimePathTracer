@@ -41,11 +41,24 @@ public class PathTracer : MonoBehaviour
         public Quaternion rotation;
     }
 
+    struct SDFMaterialData
+    {
+        public Vector3 Color;
+        public float Roughness;
+        public Vector3 Glow;
+        public float Metal;
+    }
+
     public List<SDFObject> objects;
+    public List<SDFMaterial> materials;
+    [ColorUsage(true, true)]
+    public Color BackgroundColor;
 
     public Cubemap background;
 
     private ComputeBuffer SDFObjects;
+    private ComputeBuffer SDFMaterials;
+    private ComputeBuffer Metrics;
 
     private ComputeShader RenderShaders;
 
@@ -75,6 +88,8 @@ public class PathTracer : MonoBehaviour
         {
             int SDFObjSize = Marshal.SizeOf(typeof(SDFObjectData));
             SDFObjects = new ComputeBuffer(objects.Count, SDFObjSize);
+            int SDFMatSize = Marshal.SizeOf(typeof(SDFMaterialData));
+            SDFMaterials = new ComputeBuffer(materials.Count, SDFMatSize);
 
             RenderShaders = Resources.Load("RenderShaders") as ComputeShader;
             RenderID = RenderShaders.FindKernel("Render");
@@ -149,8 +164,8 @@ public class PathTracer : MonoBehaviour
             RenderBuffers renderBuffers;
             renderBuffers = new RenderBuffers();
             Vector2Int textureResolution = new Vector2Int(cam.pixelWidth, cam.pixelHeight);
-            isDirty = CreateTexture(ref renderBuffers.Target1, textureResolution, FilterMode.Point, 0, RenderTextureFormat.ARGBHalf) || isDirty;
-            isDirty = CreateTexture(ref renderBuffers.Target2, textureResolution, FilterMode.Point, 0, RenderTextureFormat.ARGBHalf) || isDirty;
+            isDirty = CreateTexture(ref renderBuffers.Target1, textureResolution, FilterMode.Point, 0, RenderTextureFormat.ARGBFloat) || isDirty;
+            isDirty = CreateTexture(ref renderBuffers.Target2, textureResolution, FilterMode.Point, 0, RenderTextureFormat.ARGBFloat) || isDirty;
 
             Buffers[cam] = renderBuffers;
         }
@@ -164,14 +179,15 @@ public class PathTracer : MonoBehaviour
         cb.SetComputeIntParam(RenderShaders, "iFrame", iFrame);
         cb.SetComputeIntParam(RenderShaders, "SDFObjectCount", objects.Count);
         cb.SetComputeFloatParam(RenderShaders, "Accumulation", acc);
-        
+        cb.SetComputeVectorParam(RenderShaders, "BackgroundColor", new Vector3(BackgroundColor.r, BackgroundColor.g, BackgroundColor.b));
+
         cb.SetComputeVectorParam(RenderShaders, "CameraResolution", new Vector2(cam.pixelWidth, cam.pixelHeight));
         cb.SetComputeVectorParam(RenderShaders, "CameraPosition", cam.transform.position);
         cb.SetComputeMatrixParam(RenderShaders, "View", View);
         cb.SetComputeMatrixParam(RenderShaders, "ProjectionInverse",ProjectionInverse);
 
         cb.SetComputeBufferParam(RenderShaders, RenderID, "SDFObjects", SDFObjects);
-        
+        cb.SetComputeBufferParam(RenderShaders, RenderID, "SDFMaterials", SDFMaterials);
         cb.SetComputeTextureParam(RenderShaders, RenderID, "Background", background);
         cb.SetComputeTextureParam(RenderShaders, RenderID, "Previous", Buffers[cam].GetBack());
         cb.SetComputeTextureParam(RenderShaders, RenderID, "Target", Buffers[cam].GetFront());
@@ -187,23 +203,45 @@ public class PathTracer : MonoBehaviour
         Buffers[cam].SwapBuffers();
     }
 
-    // Update is called once per frame
-    void Update()
+    void UploadObjectData()
     {
         SDFObjectData[] objs = new SDFObjectData[objects.Count];
         for (int i = 0; i < objects.Count; i++)
         {
-            SDFObjectData objData; 
+            SDFObjectData objData;
             objData.position = objects[i].transform.position;
             objData.Type = (int)objects[i].type;
             objData.scale = objects[i].transform.lossyScale;
-            objData.Material = 0;
+            objData.Material = objects[i].Material;
             objData.rotation = objects[i].transform.rotation;
 
             objs[i] = objData;
         }
-        
+
         SDFObjects.SetData(objs);
+    }
+
+    void UploadMaterialData()
+    {
+        SDFMaterialData[] objs = new SDFMaterialData[materials.Count];
+        for (int i = 0; i < materials.Count; i++)
+        {
+            SDFMaterialData matData;
+            matData.Color = new Vector3(materials[i].Color.r, materials[i].Color.g, materials[i].Color.b);
+            matData.Glow = new Vector3(materials[i].Glow.r, materials[i].Glow.g, materials[i].Glow.b);
+            matData.Roughness = materials[i].Roughness;
+            matData.Metal = materials[i].Metal;
+            objs[i] = matData;
+        }
+
+        SDFMaterials.SetData(objs);
+    }
+
+    // Update is called once per frame
+    void Update()
+    {
+        UploadObjectData();
+        UploadMaterialData();
 
         iFrame++;
     }
@@ -219,6 +257,9 @@ public class PathTracer : MonoBehaviour
 
         if (SDFObjects != null)
             SDFObjects.Release();
+
+        if (SDFMaterials != null)
+            SDFMaterials.Release();
 
         Buffers.Clear();
         CommandBuffers.Clear();
